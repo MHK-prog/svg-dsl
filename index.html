@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Fast SVG DSL with Smart Fillet & Arc</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#1e293b;
+      --panel2:#0b1120;
+      --border:#334155;
+      --text:#f8fafc;
+      --muted:#94a3b8;
+      --line:#38bdf8;
+      --pt:#f43f5e;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      padding:12px;
+    }
+
+    .app{
+      max-width: 980px;
+      margin: 0 auto;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      height: calc(100svh - 24px);
+    }
+
+    .card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:12px;
+      overflow:hidden;
+    }
+
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      padding:10px;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom:1px solid var(--border);
+    }
+    .toolbar .left, .toolbar .right{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .btn{
+      background:#0b1222;
+      border:1px solid var(--border);
+      color:var(--text);
+      border-radius:10px;
+      padding:8px 12px;
+      font-size:13px;
+      cursor:pointer;
+      user-select:none;
+      transition: all 0.2s;
+    }
+    .btn:active{ transform: translateY(1px); }
+    .btn.success {
+      background: #065f46;
+      border-color: #059669;
+      color: #a7f3d0;
+    }
+    .btn.primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+    }
+    .pill{
+      color:var(--muted);
+      font-size:12px;
+      padding:6px 10px;
+      border:1px dashed rgba(148,163,184,.35);
+      border-radius:999px;
+    }
+
+    .previewWrap{
+      position:relative;
+      height: 44svh;
+      min-height: 250px;
+      background:var(--panel2);
+      touch-action: none;
+    }
+
+    .stage{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+    }
+
+    svg{
+      width: min(92vw, 700px);
+      height: auto;
+      max-height: 100%;
+      background: #050914;
+      border-radius:10px;
+      border:1px solid rgba(148,163,184,.2);
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    .editorHead{
+      padding:10px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom:1px solid var(--border);
+    }
+    .editorHead small{ color:var(--muted); font-size:12px; }
+
+    textarea{
+      width:100%;
+      height: calc(56svh - 170px);
+      min-height: 200px;
+      border:0;
+      outline:0;
+      resize:none;
+      padding:12px;
+      background:transparent;
+      color:#7dd3fc;
+      font-size:14px;
+      line-height:1.6;
+      direction:ltr;
+      white-space:pre;
+    }
+
+    .errors{
+      padding:10px 12px;
+      border-top:1px solid var(--border);
+      color: #fca5a5;
+      background: rgba(153, 27, 27, 0.2);
+      font-size:12px;
+      display:none;
+    }
+    .errors.show{ display:block; }
+
+    dialog#helpModal{
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 580px;
+      width: 90%;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+    }
+    dialog#helpModal::backdrop{
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(2px);
+    }
+    .modal-header{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .modal-header h3{ margin:0; font-size:16px; }
+    .help-section{ margin-bottom: 12px; }
+    .help-section b{ color: #38bdf8; display: block; margin-bottom: 4px; font-size: 13px; }
+    .help-section code{
+      display: block;
+      background: var(--panel2);
+      padding: 6px 10px;
+      border-radius: 6px;
+      direction: ltr;
+      text-align: left;
+      color: #a7f3d0;
+      font-size: 12px;
+      border: 1px solid rgba(148,163,184,.15);
+    }
+
+    @media (min-width: 860px){
+      .app{ flex-direction:row; }
+      .previewCard{ flex: 1.1; }
+      .editorCard{ flex: .9; }
+      .previewWrap{ height: calc(100svh - 24px - 52px); min-height: 560px; }
+      textarea{ height: calc(100svh - 24px - 52px - 46px - 42px); min-height: 560px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- PREVIEW -->
+    <div class="card previewCard">
+      <div class="toolbar">
+        <div class="left">
+          <button class="btn" id="copySvgBtn">Copy SVG</button>
+          <button class="btn" id="zoomIn">Zoom +</button>
+          <button class="btn" id="zoomOut">Zoom -</button>
+          <button class="btn" id="resetView">Reset</button>
+        </div>
+      </div>
+
+      <div class="previewWrap" id="previewWrap">
+        <div class="stage">
+          <svg id="canvas" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDITOR -->
+    <div class="card editorCard">
+      <div class="editorHead">
+        <div>
+          <div>Commands</div>
+          <small>Write your DSL code</small>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" id="openHelpBtn">Guide 💡</button>
+          <button class="btn primary" id="renderNow">Render</button>
+        </div>
+      </div>
+
+      <textarea id="code" spellcheck="false" placeholder="# Click 'Guide' to see syntax examples..."></textarea>
+
+      <div class="errors" id="errors"></div>
+    </div>
+
+  </div>
+
+  <!-- HELP MODAL -->
+  <dialog id="helpModal">
+    <div class="modal-header">
+      <h3>Quick Syntax Guide</h3>
+      <button class="btn" id="closeHelpBtn" style="padding:4px 8px;">✕</button>
+    </div>
+    
+    <div class="help-section">
+      <b>1. Absolute Point (X, Y)</b>
+      <code>A = (40, 50)</code>
+    </div>
+
+    <div class="help-section">
+      <b>2. Relative Point (dx, dy) from previous</b>
+      <code>B = A(30, -20)</code>
+    </div>
+
+    <div class="help-section">
+      <b>3. Polar Point (Radius @ Clockwise Angle)</b>
+      <code>C = B @ (40, 90)</code>
+    </div>
+
+    <div class="help-section">
+      <b>4. Line with Smooth Corners (Fillet) & Style</b>
+      <code>A -- B -- C -- A : r10 stroke(#fff) fill(none) width(2)</code>
+    </div>
+
+    <div class="help-section">
+      <b>5. Selective Fillet (Round specific corners)</b>
+      <code>A -- B -- C : r8(B) stroke(#38bdf8)</code>
+    </div>
+
+    <div class="help-section">
+      <b>6. Circle (Center Point, Radius)</b>
+      <code>circle(A, 15) : stroke(#22c55e) fill(none)</code>
+    </div>
+
+    <div class="help-section">
+      <b>7. Arc between two points (~Radius~)</b>
+      <code>A ~30~ B : stroke(#f59e0b)</code>
+      <small style="display:block; opacity:0.8; margin-top:4px;">
+        Positive radius = outward arc | Negative (e.g. <code>~-30~</code>) = reverse direction
+      </small>
+    </div>
+
+    <div style="margin-top:14px; text-align:left;">
+      <button class="btn" id="loadExampleBtn">Load Example</button>
+    </div>
+  </dialog>
+
+<script>
+  const codeArea = document.getElementById('code');
+  const svg = document.getElementById('canvas');
+  const errorsBox = document.getElementById('errors');
+  const copyBtn = document.getElementById('copySvgBtn');
+
+  // ---------- Modal Logic (KISS) ----------
+  const helpModal = document.getElementById('helpModal');
+  document.getElementById('openHelpBtn').addEventListener('click', () => helpModal.showModal());
+  document.getElementById('closeHelpBtn').addEventListener('click', () => helpModal.close());
+  helpModal.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.close(); });
+
+  document.getElementById('loadExampleBtn').addEventListener('click', () => {
+    codeArea.value = 
+`# Rectangle with rounded corners
+A = (30, 40)
+B = (170, 40)
+C = (170, 100)
+D = (30, 100)
+A -- B -- C -- D -- A : r10 stroke(#38bdf8) fill(none)
+
+# Combined path with arc
+P1 = (40, 130)
+P2 = (160, 130)
+P3 = (100, 180)
+P1 ~60~ P2 -- P3 -- P1 : stroke(#f43f5e) fill(rgba(244,63,94,0.15))`;
+    helpModal.close();
+    parseAndRender();
+  });
+
+  // ---------- Parentheses auto-closing & smart deletion (KISS) ----------
+  codeArea.addEventListener('beforeinput', (e) => {
+    const start = codeArea.selectionStart;
+    const end = codeArea.selectionEnd;
+    const val = codeArea.value;
+
+    if (e.data === '(') {
+      e.preventDefault();
+      codeArea.value = val.slice(0, start) + '()' + val.slice(end);
+      codeArea.selectionStart = codeArea.selectionEnd = start + 1;
+      codeArea.dispatchEvent(new Event('input'));
+      return;
+    }
+
+    if (e.inputType === 'deleteContentBackward' && start === end) {
+      if (val[start - 1] === '(' && val[start] === ')') {
+        e.preventDefault();
+        codeArea.value = val.slice(0, start - 1) + val.slice(start + 1);
+        codeArea.selectionStart = codeArea.selectionEnd = start - 1;
+        codeArea.dispatchEvent(new Event('input'));
+      }
+    }
+  });
+
+  // ---------- Zoom / Pan ----------
+  const wrap = document.getElementById('previewWrap');
+  const zoomLabel = document.getElementById('zoomLabel');
+  let view = { scale: 1, tx: 0, ty: 0 };
+
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+  function applyView(){
+    svg.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+    if (zoomLabel) zoomLabel.textContent = `${Math.round(view.scale * 100)}%`;
+  }
+
+  function zoomAt(factor, clientX, clientY){
+    const old = view.scale;
+    const next = clamp(old * factor, 0.25, 8);
+    const rect = svg.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const k = next / old;
+    view.tx = px - k * (px - view.tx);
+    view.ty = py - k * (py - view.ty);
+    view.scale = next;
+    applyView();
+  }
+
+  document.getElementById('zoomIn').addEventListener('click', () => zoomAt(1.25, window.innerWidth/2, 140));
+  document.getElementById('zoomOut').addEventListener('click', () => zoomAt(1/1.25, window.innerWidth/2, 140));
+  document.getElementById('resetView').addEventListener('click', () => { view = { scale:1, tx:0, ty:0 }; applyView(); });
+
+  wrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomAt(e.deltaY < 0 ? 1.15 : 1/1.15, e.clientX, e.clientY);
+  }, { passive:false });
+
+  const pointers = new Map();
+  let lastPan = null, lastPinchDist = null;
+
+  wrap.addEventListener('pointerdown', (e) => {
+    wrap.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) lastPan = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty };
+    if (pointers.size === 2) {
+      const [p1, p2] = [...pointers.values()];
+      lastPinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+    }
+  });
+
+  wrap.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.size === 1 && lastPan){
+      const p = [...pointers.values()][0];
+      view.tx = lastPan.tx + (p.x - lastPan.x);
+      view.ty = lastPan.ty + (p.y - lastPan.y);
+      applyView();
+    } else if (pointers.size === 2){
+      const [p1, p2] = [...pointers.values()];
+      const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      if (lastPinchDist) zoomAt(d / lastPinchDist, (p1.x + p2.x)/2, (p1.y + p2.y)/2);
+      lastPinchDist = d;
+    }
+  });
+
+  function clearPointer(e){
+    pointers.delete(e.pointerId);
+    if (pointers.size === 0) { lastPan = null; lastPinchDist = null; }
+    if (pointers.size === 1) {
+      const p = [...pointers.values()][0];
+      lastPan = { x: p.x, y: p.y, tx: view.tx, ty: view.ty };
+    }
+  }
+  wrap.addEventListener('pointerup', clearPointer);
+  wrap.addEventListener('pointercancel', clearPointer);
+
+  // ---------- Copy SVG ----------
+  let currentSvgOutput = '';
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(currentSvgOutput).then(() => {
+      const oldText = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      copyBtn.classList.add('success');
+      setTimeout(() => {
+        copyBtn.textContent = oldText;
+        copyBtn.classList.remove('success');
+      }, 1800);
+    });
+  });
+
+  // ---------- Utils ----------
+  function dist(p1, p2) { return Math.hypot(p2.x - p1.x, p2.y - p1.y); }
+
+  // ---------- Modifiers Parser ----------
+  const DEFAULTS = { stroke: '#38bdf8', strokeWidth: 3, fill: 'none', r: 8 };
+
+  function parseLineModifiers(fullLine) {
+    const parts = fullLine.split(':');
+    const mainPath = parts[0].trim();
+    const optionsStr = parts.slice(1).join(':').trim();
+
+    let stroke = DEFAULTS.stroke;
+    let strokeWidth = DEFAULTS.strokeWidth;
+    let fill = DEFAULTS.fill;
+    let roundConfig = null;
+
+    if (optionsStr) {
+      const fillMatch = optionsStr.match(/(?:fill|f)\(([^)]+)\)/i);
+      if (fillMatch) fill = fillMatch[1].trim();
+
+      const strokeMatch = optionsStr.match(/(?:stroke|sc|s)\(([^)]+)\)/i);
+      if (strokeMatch) stroke = strokeMatch[1].trim();
+
+      const widthMatch = optionsStr.match(/(?:width|w)\(([^)]+)\)/i);
+      if (widthMatch) {
+        const w = parseFloat(widthMatch[1].trim());
+        if (!Number.isNaN(w) && w > 0) strokeWidth = w;
+      }
+
+      const rMatch = optionsStr.match(/(?:^|[\s,;])r(\d*\.?\d*)\s*(?:\(([^)]+)\))?/i);
+      if (rMatch) {
+        const radius = rMatch[1] ? parseFloat(rMatch[1]) : DEFAULTS.r;
+        const list = (rMatch[2] || '').trim();
+
+        if (!Number.isNaN(radius) && radius > 0) {
+          roundConfig = !list ? { radius, targets: null } : { radius, targets: new Set(list.split(',').map(s => s.trim()).filter(Boolean)) };
+        }
+      }
+    }
+
+    return { mainPath, stroke, strokeWidth, fill, roundConfig };
+  }
+
+  // ---------- Rounded Path (Q) ----------
+  function buildPathWithSelectiveFillet(pts, roundConfig, isClosed) {
+    let points = [...pts];
+    if (isClosed && points.length > 1 && points[0].name === points[points.length - 1].name) {
+      points.pop();
+    }
+    const n = points.length;
+    if (n < 2) return '';
+
+    if (!roundConfig) {
+      let d = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 1; i < n; i++) d += ` L ${points[i].x} ${points[i].y}`;
+      if (isClosed) d += ' Z';
+      return d;
+    }
+
+    const { radius: targetR, targets } = roundConfig;
+    const corners = new Array(n).fill(null);
+
+    for (let i = 0; i < n; i++) {
+      const curr = points[i];
+      const isCorner = isClosed || (i > 0 && i < n - 1);
+      if (!isCorner) continue;
+      if (targets && !targets.has(curr.name)) continue;
+
+      const prev = points[(i - 1 + n) % n];
+      const next = points[(i + 1) % n];
+
+      const dPrev = dist(curr, prev);
+      const dNext = dist(curr, next);
+      if (dPrev < 0.0001 || dNext < 0.0001) continue;
+
+      const vPrev = { x: (prev.x - curr.x) / dPrev, y: (prev.y - curr.y) / dPrev };
+      const vNext = { x: (next.x - curr.x) / dNext, y: (next.y - curr.y) / dNext };
+
+      const dot = Math.max(-1, Math.min(1, vPrev.x * vNext.x + vPrev.y * vNext.y));
+      const angle = Math.acos(dot);
+      if (Math.abs(Math.PI - angle) < 0.001) continue;
+
+      const maxOffset = Math.min(dPrev / 2, dNext / 2);
+      const tanHalf = Math.tan(angle / 2);
+
+      let offset = tanHalf > 0.001 ? targetR / tanHalf : 0;
+      offset = Math.min(offset, maxOffset);
+      if (offset <= 0.0001) continue;
+
+      corners[i] = {
+        inPt: { x: curr.x + vPrev.x * offset, y: curr.y + vPrev.y * offset },
+        outPt:{ x: curr.x + vNext.x * offset, y: curr.y + vNext.y * offset },
+        corner: curr
+      };
+    }
+
+    let d = '';
+    if (isClosed) {
+      const start = corners[0] ? corners[0].outPt : points[0];
+      d = `M ${start.x.toFixed(2)} ${start.y.toFixed(2)}`;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const c = corners[j];
+        const p = points[j];
+        if (c) {
+          d += ` L ${c.inPt.x.toFixed(2)} ${c.inPt.y.toFixed(2)}`;
+          d += ` Q ${c.corner.x.toFixed(2)} ${c.corner.y.toFixed(2)} ${c.outPt.x.toFixed(2)} ${c.outPt.y.toFixed(2)}`;
+        } else {
+          d += ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+        }
+      }
+      d += ' Z';
+    } else {
+      d = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 1; i < n - 1; i++) {
+        const c = corners[i];
+        const p = points[i];
+        if (c) {
+          d += ` L ${c.inPt.x.toFixed(2)} ${c.inPt.y.toFixed(2)}`;
+          d += ` Q ${c.corner.x.toFixed(2)} ${c.corner.y.toFixed(2)} ${c.outPt.x.toFixed(2)} ${c.outPt.y.toFixed(2)}`;
+        } else {
+          d += ` L ${p.x} ${p.y}`;
+        }
+      }
+      d += ` L ${points[n - 1].x} ${points[n - 1].y}`;
+    }
+    return d;
+  }
+
+  // ---------- DSL Parser & Renderer ----------
+  function parseAndRender(){
+    const input = codeArea.value;
+    const lines = input.split('\n');
+    const points = {};
+    const errors = [];
+    let drawPaths = '';
+
+    const absPt   = /^([A-Za-z0-9_]+)\s*=\s*\(\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\)$/;
+    const relPt   = /^([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)\s*\(\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\)$/;
+    const polarPt = /^([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)\s*@\s*\(\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\)$/;
+    const circleCmd = /^circle\(\s*([A-Za-z0-9_]+)\s*,\s*([-+]?\d*\.?\d+)\s*\)$/i;
+
+    lines.forEach((raw, idx) => {
+      let line = raw.split('#')[0].trim();
+      if (!line) return;
+
+      let m1 = line.match(absPt);
+      if (m1) {
+        points[m1[1]] = { x: Number(m1[2]), y: Number(m1[3]), name: m1[1] };
+        return;
+      }
+
+      let m2 = line.match(relPt);
+      if (m2) {
+        const [_, name, base, dx, dy] = m2;
+        if (!points[base]) { errors.push(`Line ${idx+1}: Point "${base}" not defined yet.`); return; }
+        points[name] = { x: points[base].x + Number(dx), y: points[base].y + Number(dy), name };
+        return;
+      }
+
+      let m3 = line.match(polarPt);
+      if (m3) {
+        const [_, name, base, r, deg] = m3;
+        if (!points[base]) { errors.push(`Line ${idx+1}: Point "${base}" not defined yet.`); return; }
+        const rad = (Number(deg) * Math.PI) / 180;
+        points[name] = {
+          x: points[base].x + Number(r) * Math.cos(rad),
+          y: points[base].y + Number(r) * Math.sin(rad),
+          name
+        };
+        return;
+      }
+    });
+
+    lines.forEach((raw, idx) => {
+      let line = raw.split('#')[0].trim();
+      if (!line || absPt.test(line) || relPt.test(line) || polarPt.test(line)) return;
+
+      const { mainPath, stroke, strokeWidth, fill, roundConfig } = parseLineModifiers(line);
+
+      const cMatch = mainPath.match(circleCmd);
+      if (cMatch) {
+        const [_, centerName, r] = cMatch;
+        const center = points[centerName];
+        if (!center) { errors.push(`Line ${idx+1}: Center point "${centerName}" not found.`); return; }
+        drawPaths += `  <circle cx="${center.x}" cy="${center.y}" r="${r}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" />\n`;
+        return;
+      }
+
+      const hasArc = mainPath.includes('~');
+
+      if (hasArc) {
+        const tokens = mainPath.split(/\s*(--|~[-+]?\d*\.?\d+~)\s*/).filter(Boolean);
+        if (tokens.length >= 3) {
+          const startPtName = tokens[0];
+          if (!points[startPtName]) { errors.push(`Line ${idx+1}: Point "${startPtName}" not found.`); return; }
+
+          let d = `M ${points[startPtName].x} ${points[startPtName].y}`;
+          for (let i = 1; i < tokens.length; i += 2) {
+            const connector = tokens[i];
+            const targetName = tokens[i + 1];
+            const targetPt = points[targetName];
+
+            if (!targetPt) { errors.push(`Line ${idx+1}: Point "${targetName}" not found.`); return; }
+
+            if (connector === '--') {
+              d += ` L ${targetPt.x} ${targetPt.y}`;
+            } else if (connector.startsWith('~')) {
+              const rVal = parseFloat(connector.replace(/~/g, ''));
+              const r = Math.abs(rVal) || 20;
+              const sweep = rVal >= 0 ? 1 : 0;
+              d += ` A ${r} ${r} 0 0 ${sweep} ${targetPt.x} ${targetPt.y}`;
+            }
+          }
+          if (tokens[0] === tokens[tokens.length - 1]) d += ' Z';
+          drawPaths += `  <path d="${d}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linecap="round" stroke-linejoin="round" />\n`;
+          return;
+        }
+      }
+
+      const ptNames = mainPath.split(/\s*--\s*/).filter(Boolean);
+      if (ptNames.length < 2) return;
+
+      const missing = ptNames.find(name => !points[name]);
+      if (missing) { errors.push(`Line ${idx+1}: Point "${missing}" not found.`); return; }
+
+      const pts = ptNames.map(name => points[name]);
+      const isClosed = (pts[0].name === pts[pts.length - 1].name);
+
+      const d = buildPathWithSelectiveFillet(pts, roundConfig, isClosed);
+      drawPaths += `  <path d="${d}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linecap="round" stroke-linejoin="round" />\n`;
+    });
+
+    currentSvgOutput = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">\n${drawPaths}</svg>`;
+
+    let debugDots = '';
+    for (const name in points){
+      const p = points[name];
+      debugDots += `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="#f43f5e" />`;
+      debugDots += `<text x="${p.x + 4}" y="${p.y - 4}" fill="#94a3b8" font-size="8">${name}</text>`;
+    }
+
+    svg.innerHTML = drawPaths + debugDots;
+
+    if (errors.length) {
+      errorsBox.classList.add('show');
+      errorsBox.innerHTML = '<b>Errors:</b><br>' + errors.join('<br>');
+    } else {
+      errorsBox.classList.remove('show');
+    }
+  }
+
+  let timer = null;
+  codeArea.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(parseAndRender, 60);
+  });
+  document.getElementById('renderNow').addEventListener('click', parseAndRender);
+
+  parseAndRender();
+  applyView();
+</script>
+</body>
+</html>
