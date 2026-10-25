@@ -2,7 +2,7 @@
 
 > **A minimal, zero-dependency text DSL to sketch SVGs with automatic fillets, polar points, and arcs in real-time.**
 
-[🚀 **Try Live Demo**](https://mhk-prog.github.io/svg-dsl/)
+[🚀 **Try Live Demo**](https://YOUR_USERNAME.github.io/svg-dsl/)
 
 ---
 
@@ -24,3 +24,35 @@
 A = (20, 20)           # Absolute (x, y)
 B = A(80, 0)           # Relative to A
 C = B @ (50, 45)       # Polar: Distance @ Angle
+```
+
+### 2. Rounded Shapes (Fillet)
+```dsl
+A -- B -- C -- A : r10 stroke(#38bdf8) fill(none) width(2)
+```
+
+### 3. Arcs & Circles
+```dsl
+P1 ~40~ P2 : stroke(#f43f5e)
+circle(A, 15) : stroke(#22c55e) fill(none)
+```
+
+---
+
+## 🛠️ Local Development
+
+No `npm install`, no build step. Just clone and open `index.html`:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/svg-dsl.git
+cd svg-dsl
+open index.html
+```
+
+---
+
+## 🤝 Contributing
+
+Issues, feature suggestions, and PRs are welcome! Feel free to open an issue if you have ideas for new syntax or modifiers.
+
+License: MIT
