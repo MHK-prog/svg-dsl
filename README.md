@@ -2,7 +2,7 @@
 
 > **A minimal, zero-dependency text DSL to sketch SVGs with automatic fillets, polar points, and arcs in real-time.**
 
-[🚀 **Try Live Demo**](https://YOUR_USERNAME.github.io/svg-dsl/)
+[🚀 **Try Live Demo**](https://mhk-prog.github.io/svg-dsl/)
 
 ---
 
